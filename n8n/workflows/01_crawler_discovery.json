@@ -19,7 +19,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        220,
+        440,
         0
       ],
       "id": "7190022c-0e52-496a-9d03-d90e15d6b34b",
@@ -40,7 +40,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
+        660,
         0
       ],
       "id": "49b3c7c6-bd30-4989-b836-faca7fdae059",
@@ -53,7 +53,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
+        1100,
         0
       ],
       "id": "efa1b422-8c03-45ee-8303-c9372a912b74",
@@ -86,7 +86,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1100,
+        1320,
         0
       ],
       "id": "675f1a73-31a5-493d-a357-ce51d5e133a2",
@@ -106,7 +106,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1320,
+        1540,
         -100
       ],
       "id": "58556720-df64-4ed7-9259-697542ee5319",
@@ -147,7 +147,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1760,
+        1980,
         -100
       ],
       "id": "b2e34451-9cb2-4a78-acb0-cef908706d09",
@@ -160,7 +160,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1980,
+        2200,
         -200
       ],
       "id": "dd13fed9-9ef6-4f02-8e30-03b305352ea9",
@@ -175,7 +175,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        2160,
+        2380,
         -200
       ],
       "id": "4c0d3d1b-5ae6-4ec4-a9dd-f5bcf8954f59",
@@ -194,7 +194,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        660,
+        880,
         0
       ],
       "id": "8d53d5dd-c4a3-4369-9a4f-159f306288e3",
@@ -207,11 +207,29 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1540,
+        1760,
         -100
       ],
       "id": "6e9dc3c7-8688-46e8-b94e-2a320c36690a",
       "name": "Parse & Validate"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {},
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -160
+      ],
+      "id": "63ff0c25-d3b2-4663-a396-32cef62efb54",
+      "name": "Schedule Trigger"
     }
   ],
   "pinData": {},
@@ -325,6 +343,17 @@
           }
         ]
       ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Source List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -333,7 +362,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "errorWorkflow": "zjB97JAAZ0ABogIc"
   },
-  "versionId": "0bde8ac7-74e5-4c67-9048-3af5aabc6856",
+  "versionId": "5d3e9e34-2c03-48a9-9c97-3a04888da7eb",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "8f29f85f1ebc7a2da8bd58dfa5853398a9c94ea305d9c4d185ef8a641419e0b9"

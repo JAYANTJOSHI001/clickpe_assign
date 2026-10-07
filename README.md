@@ -256,7 +256,7 @@ The loan eligibility engine uses **n8n** to orchestrate the end-to-end automatio
 
 Automatically fetches loan product information from external sources, uses Gemini to extract structured eligibility criteria, validates the extracted data, and upserts the products into PostgreSQL.
 
-![Loan Product Discovery](https://res.cloudinary.com/du7a1obsy/image/upload/v1791377085/Screenshot_2026-10-07_181425_paxdsa.png)
+![Loan Product Discovery](https://res.cloudinary.com/du7a1obsy/image/upload/v1791378838/Screenshot_2026-10-07_184244_kmaccx.png)
 
 ### B. User Loan Matching
 
