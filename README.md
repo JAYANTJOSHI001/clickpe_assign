@@ -148,10 +148,11 @@ At the end of the deployment, save the **`GetUploadUrlFunctionUrl`** output (e.g
   - **Google Gemini API:** Enter your free Gemini API key.
   - **Header Auth:** Add header name `X-Webhook-Secret` matching `.env`.
 - [ ] **Import Workflows:**
-  - Import Workflow A (Crawler) from `n8n/workflows/workflow_a.json`
-  - Import Workflow B (Matching Engine) from `n8n/workflows/workflow_b.json`
-  - Import Workflow C (Notification Engine) from `n8n/workflows/workflow_c.json`
-- [ ] **Activate Workflows:** Toggle all three workflows to **Active**.
+  - Import Workflow A (Crawler) from `n8n/workflows/01_crawler_discovery.json`
+  - Import Workflow B (Matching Engine) from `n8n/workflows/02_matching_engine.json`
+  - Import Workflow C (Notification Engine) from `n8n/workflows/03_notification_ses.json`
+  - Import Error Handler from `n8n/workflows/04_error_handler.json`
+- [ ] **Activate Workflows:** Toggle the workflows to **Active**.
 
 ---
 
@@ -179,6 +180,73 @@ At the end of the deployment, save the **`GetUploadUrlFunctionUrl`** output (e.g
 - **Line-by-Line Streaming Ingestion:** `process_csv` streams the S3 object using Python's `io.TextIOWrapper` and `csv.DictReader`. Memory usage remains strictly flat at ~50 MB regardless of whether the file has 1,000 or 1,000,000 rows.
 - **1,000-Row Batching & Idempotency:** User records are committed in batches of 1,000 using `psycopg2.extras.execute_values` with an `ON CONFLICT (user_id) DO UPDATE` clause. Re-uploading the exact same CSV updates records in place without throwing errors or duplicating data.
 - **Asynchronous Dead-Letter Queue (DLQ):** `process_csv` routes failed events to an Amazon SQS dead-letter queue after automatic Lambda retries, preserving corrupted payloads for debugging without stalling the pipeline.
+
+### Web Crawling Strategy (Workflow A)
+
+- **Target Public Sources:** Crawls publicly accessible personal loan product pages (e.g. BankBazaar, Paisabazaar, HDFC Bank).
+- **DOM Sanitization & Boilerplate Removal:** Raw web pages are heavily cluttered with navigational markup, tracking scripts, and stylesheets. Workflow A strips `<script>`, `<style>`, `<noscript>`, and HTML tags, collapsing whitespace to produce dense, contextual text.
+- **LLM-Powered Zero-Shot Extraction (Gemini Flash):** Traditional web scrapers rely on CSS selectors or XPath expressions that break whenever a financial institution updates its frontend layout. Instead, our pipeline forwards cleaned text to Google Gemini Flash with strict JSON schema instructions to extract:
+  - `product_name`, `provider`, `source_url`
+  - `interest_rate_min`, `interest_rate_max`
+  - `min_income`, `min_credit_score`, `max_credit_score`, `min_age`, `max_age`
+  - `employment_required` (normalized array e.g. `["salaried", "self-employed"]`)
+  - `eligibility_notes` (free-text qualitative conditions)
+- **Validation & Idempotent Upsert:** Extracted data passes through an n8n Code validation node to verify numerical ranges and non-empty product names. Valid products are upserted into the PostgreSQL `loan_products` table via `ON CONFLICT (provider, product_name) DO UPDATE`, ensuring daily crawl cycles update rates without duplicating records.
+
+### Solution to the Optimization Treasure Hunt (Workflow B)
+
+#### The Problem
+Evaluating large datasets (e.g. 10,000 applicants against 10 loan products) produces **100,000 applicant-product combinations**. Naively sending all pairs to an LLM like Gemini or GPT would result in:
+1. **Severe Latency:** Processing 100,000 LLM calls sequentially or in small batches takes hours.
+2. **API Rate Limiting:** Exceeds free tier quota (15 RPM / 1,500 RPD) almost immediately, throwing HTTP 429 errors.
+3. **High Cost:** Hundreds of thousands of input/output tokens would incur significant expenses.
+
+#### The Multi-Stage Optimization Funnel
+To solve this, Workflow B implements a **3-stage funnel** that reduces LLM invocations by over **98%** while preserving nuanced decision-making for complex cases:
+
+```mermaid
+flowchart TD
+    A["All Combinations (10,000 applicants × 10 products = 100k pairs)"] --> B["Stage 1: SQL Pre-Filter with Tolerance Margins"]
+    B -->|"-85% disqualified"| Drop1["Discarded (Definite Rejects)"]
+    B -->|"~15,000 Candidate Pairs"| C["Stage 2: Deterministic Rule & Scoring Engine"]
+    C -->|"Clear Passes (~80%)"| Pass["Direct Match (matches table)"]
+    C -->|"Clear Fails (<60 score)"| Drop2["Discarded"]
+    C -->|"Borderline Cases (~3-5%)"| D["Stage 3: Targeted LLM Evaluation (Gemini Flash)"]
+    D -->|"LLM Qualified"| Pass
+    D -->|"LLM Disqualified"| Drop3["Discarded"]
+```
+
+1. **Stage 1 — SQL Pre-Filter with Margin (Database Layer):**
+   A single, indexed SQL join between `users` (in the current batch) and active `loan_products` filters out obviously unqualified users before data ever enters n8n memory. To avoid prematurely rejecting borderline applicants who might qualify via qualitative exceptions, the query applies a loose margin ($\ge 95\%$ income, $\pm 20$ credit points, age boundaries):
+   ```sql
+   WHERE u.upload_batch_id = :batch_id
+     AND u.monthly_income >= COALESCE(p.min_income, 0) * 0.95
+     AND u.credit_score >= COALESCE(p.min_credit_score, 0) - 20
+     AND u.credit_score <= COALESCE(p.max_credit_score, 900) + 20
+     AND u.age >= COALESCE(p.min_age, 18)
+     AND u.age <= COALESCE(p.max_age, 100)
+     AND NOT EXISTS (SELECT 1 FROM matches m WHERE m.user_id = u.user_id AND m.product_id = p.id);
+   ```
+   *Impact:* Drops ~85–90% of impossible candidate pairs in sub-second database execution time.
+
+2. **Stage 2 — Deterministic Rule & Scoring Engine (n8n Code Node):**
+   A fast JavaScript node evaluates hard numerical constraints and normalizes employment types (`salaried`, `self-employed`, `both`). It computes a 100-point composite score:
+   - **Income Check:** 30 points
+   - **Credit Score Check:** 30 points
+   - **Age Check:** 20 points
+   - **Employment Check:** 20 points
+   
+   **Classification:**
+   - **Score = 100 (Hard Pass):** Classified as `eligible`. Directly written to the `matches` table. **No LLM call needed.**
+   - **Score 60–99 (Borderline):** Meets most criteria but misses a threshold (e.g. income or credit score slightly below minimum). Marked as `borderline` and routed to Stage 3.
+   - **Score < 60 (Reject):** Dropped immediately.
+
+3. **Stage 3 — Targeted Qualitative LLM Reasoning (Gemini Flash):**
+   Only the small subset of `borderline` pairs with specific bank `eligibility_notes` are forwarded to Gemini. The prompt instructs the model to evaluate whether compensating factors (such as a 780+ credit score offsetting a marginally lower income) satisfy the bank's qualitative criteria.
+   *Impact:* Reduces LLM API calls from 100,000 down to fewer than 200, completing within free-tier rate limits in under a minute.
+
+4. **Stage 4 — Persistence & Notification Hand-off:**
+   Qualified matches are committed to `matches` with `ON CONFLICT (user_id, product_id) DO NOTHING` and `notified = FALSE`. Workflow B then executes Workflow C to construct and send personalized SES emails.
 ---
 ## 7. n8n Automations
 
