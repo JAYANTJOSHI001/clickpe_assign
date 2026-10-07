@@ -1,0 +1,85 @@
+{
+  "name": "E - Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e0fbe697-003d-4b25-b4ec-35a8bc765f06",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\n\nreturn [\n  {\n    json: {\n      workflow_name: error.workflow?.name ?? 'Unknown workflow',\n      execution_id: error.execution?.id ?? null,\n      error_message:\n        error.execution?.error?.message ??\n        error.error?.message ??\n        'Unknown error',\n      error_stack:\n        error.execution?.error?.stack ??\n        null,\n      failed_at: new Date().toISOString(),\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "539732d8-b5d5-429b-a1f0-1eae0a3efce8",
+      "name": "Format Error"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO workflow_errors (\n  workflow_name,\n  execution_id,\n  error_message,\n  error_stack,\n  failed_at\n)\nVALUES (\n  '{{ String($json.workflow_name).replace(/'/g, \"''\") }}',\n  '{{ String($json.execution_id ?? '').replace(/'/g, \"''\") }}',\n  '{{ String($json.error_message).replace(/'/g, \"''\") }}',\n  '{{ String($json.error_stack ?? '').replace(/'/g, \"''\") }}',\n  '{{ $json.failed_at }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "id": "c30c7039-eadf-4d2c-89ff-86e1f010869e",
+      "name": "Log Error",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "350c6bf1-4510-40ba-8c67-bb3383e4c89e",
+  "meta": {
+    "instanceId": "8f29f85f1ebc7a2da8bd58dfa5853398a9c94ea305d9c4d185ef8a641419e0b9"
+  },
+  "id": "zjB97JAAZ0ABogIc",
+  "tags": []
+}

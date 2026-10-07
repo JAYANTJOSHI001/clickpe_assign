@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loan Eligibility Engine - Applicant Data Pipeline & Real-Time Insights</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #090d16;
+      --bg-surface: #0f172a;
+      --bg-card: #182234;
+      --bg-card-hover: #1e293b;
+      --border-subtle: #26334d;
+      --border-active: #38bdf8;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.2);
+      --emerald: #34d399;
+      --emerald-glow: rgba(52, 211, 153, 0.2);
+      --violet: #a78bfa;
+      --violet-glow: rgba(167, 139, 250, 0.2);
+      --amber: #fbbf24;
+      --amber-glow: rgba(251, 191, 36, 0.2);
+      --rose: #f87171;
+      --rose-glow: rgba(248, 113, 113, 0.2);
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font); }
+    body {
+      background: radial-gradient(circle at 50% 0%, #152033 0%, var(--bg-base) 80%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem 1rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand-logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #0284c7, #6366f1);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 0 20px rgba(2, 132, 199, 0.4);
+    }
+    .brand-logo svg { width: 22px; height: 22px; fill: white; }
+    h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }
+    .subtitle { font-size: 0.825rem; color: var(--text-muted); }
+
+    .header-badges {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+    }
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.15); } }
+
+    /* Top Stats Grid */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .stat-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .stat-card:hover { transform: translateY(-2px); border-color: #3b5075; }
+    .stat-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); font-weight: 600; }
+    .stat-val { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text-main); }
+    .stat-meta { font-size: 0.725rem; color: var(--text-muted); }
+
+    /* Upload & Controller Section */
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 1.75rem;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    }
+    .upload-zone {
+      border: 2px dashed #334768;
+      border-radius: 12px;
+      padding: 2.25rem 1.5rem;
+      text-align: center;
+      background: rgba(15, 23, 42, 0.6);
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .upload-zone.dragover {
+      border-color: var(--cyan);
+      background: rgba(56, 189, 248, 0.08);
+      box-shadow: 0 0 25px var(--cyan-glow);
+    }
+    .upload-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #1e293b;
+      display: grid;
+      place-items: center;
+      color: var(--cyan);
+    }
+    .upload-zone p { font-size: 0.95rem; font-weight: 500; }
+    .upload-zone span { font-size: 0.8rem; color: var(--text-dim); }
+
+    .file-preview {
+      display: none;
+      margin-top: 1rem;
+      background: #131c2e;
+      border: 1px solid #293852;
+      border-radius: 10px;
+      padding: 1rem;
+      gap: 0.75rem;
+      flex-direction: column;
+    }
+    .file-preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .file-name { font-weight: 600; font-size: 0.875rem; color: var(--cyan); display: flex; align-items: center; gap: 0.4rem; }
+    .file-meta { font-size: 0.75rem; color: var(--text-muted); }
+    .col-badges { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+    .col-pill {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      background: #1e293b;
+      color: #94a3b8;
+      font-family: var(--mono);
+      border: 1px solid #334155;
+    }
+    .col-pill.valid { background: rgba(52, 211, 153, 0.15); color: #34d399; border-color: rgba(52, 211, 153, 0.3); }
+
+    .action-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      border: none;
+      border-radius: 9px;
+      padding: 0.75rem 1.25rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      color: white;
+      box-shadow: 0 4px 15px rgba(2, 132, 199, 0.3);
+    }
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.95;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: var(--text-main);
+      border: 1px solid var(--border-subtle);
+    }
+    .btn-secondary:hover:not(:disabled) { background: #26354a; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Pipeline Execution Stepper */
+    .pipeline-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 1.5rem;
+    }
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+    }
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      position: relative;
+    }
+    @media (max-width: 820px) {
+      .stepper { grid-template-columns: 1fr; }
+    }
+    .step-item {
+      background: #111a2c;
+      border: 1px solid #1f2b42;
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      position: relative;
+      transition: all 0.3s;
+    }
+    .step-item.active {
+      border-color: var(--cyan);
+      box-shadow: 0 0 15px var(--cyan-glow);
+      background: #14223a;
+    }
+    .step-item.completed {
+      border-color: var(--emerald);
+      background: rgba(52, 211, 153, 0.05);
+    }
+    .step-item.failed {
+      border-color: var(--rose);
+      background: rgba(248, 113, 113, 0.06);
+    }
+    .step-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .step-number {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #1e293b;
+      font-size: 0.75rem;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      color: var(--text-dim);
+    }
+    .step-item.active .step-number { background: var(--cyan); color: #090d16; }
+    .step-item.completed .step-number { background: var(--emerald); color: #090d16; }
+    .step-status { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--text-dim); }
+    .step-item.active .step-status { color: var(--cyan); }
+    .step-item.completed .step-status { color: var(--emerald); }
+    .step-title { font-size: 0.85rem; font-weight: 600; }
+    .step-desc { font-size: 0.725rem; color: var(--text-muted); line-height: 1.3; }
+
+    /* Active Batch Details & Metrics */
+    .batch-hero {
+      background: linear-gradient(180deg, #16243b 0%, #0f172a 100%);
+      border: 1px solid #2a3d5e;
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .batch-hero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .batch-id-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--mono);
+      font-size: 0.825rem;
+      background: #090d16;
+      padding: 0.4rem 0.8rem;
+      border-radius: 8px;
+      border: 1px solid #23314a;
+    }
+    .copy-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+    }
+    .copy-btn:hover { color: var(--text-main); background: #1e293b; }
+
+    .status-pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .status-pill.processing { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber); }
+    .status-pill.ingested { background: var(--cyan-glow); color: var(--cyan); border: 1px solid var(--cyan); }
+    .status-pill.matched { background: var(--violet-glow); color: var(--violet); border: 1px solid var(--violet); }
+    .status-pill.notified { background: var(--emerald-glow); color: var(--emerald); border: 1px solid var(--emerald); }
+    .status-pill.failed, .status-pill.webhook_failed { background: var(--rose-glow); color: var(--rose); border: 1px solid var(--rose); }
+
+    .batch-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .kpi-tile {
+      background: #0d1524;
+      border: 1px solid #1c273c;
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .kpi-name { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600; }
+    .kpi-val { font-size: 1.35rem; font-weight: 700; }
+
+    /* Tabs & Content */
+    .tabs-wrap {
+      display: flex;
+      border-bottom: 1px solid var(--border-subtle);
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      color: var(--cyan);
+      border-bottom-color: var(--cyan);
+    }
+    .tab-btn:hover:not(.active) { color: var(--text-main); }
+
+    .tab-content { display: none; padding-top: 1rem; }
+    .tab-content.active { display: block; }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      background: #0f172a;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.825rem;
+      text-align: left;
+    }
+    thead th {
+      background: #141f33;
+      padding: 0.75rem 1rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    tbody td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #1c273b;
+      color: var(--text-muted);
+    }
+    tbody tr:hover { background: #162238; }
+    tbody tr:last-child td { border-bottom: none; }
+    .mono { font-family: var(--mono); color: var(--text-main); }
+    .badge-stage {
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-stage.eligible { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+    .badge-stage.borderline { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+    .badge-stage.rejected { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+
+    /* Funnel Breakdown */
+    .funnel-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .funnel-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .funnel-label { width: 140px; font-size: 0.8rem; font-weight: 500; color: var(--text-muted); }
+    .funnel-track {
+      flex: 1;
+      height: 28px;
+      background: #111a2b;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #1e2a42;
+      position: relative;
+    }
+    .funnel-fill {
+      height: 100%;
+      border-radius: 7px;
+      background: linear-gradient(90deg, #0284c7, #38bdf8);
+      display: flex;
+      align-items: center;
+      padding-left: 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #090d16;
+      transition: width 0.6s ease;
+    }
+    .funnel-count { width: 80px; text-align: right; font-weight: 700; font-size: 0.85rem; font-family: var(--mono); }
+
+    /* Log / Alert Box */
+    .alert-box {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.825rem;
+      display: none;
+    }
+    .alert-box.info { background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: var(--cyan); }
+    .alert-box.success { background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); color: var(--emerald); }
+    .alert-box.error { background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.3); color: var(--rose); }
+
+    .live-spin {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .search-input {
+      background: #111a2d;
+      border: 1px solid #23324d;
+      border-radius: 8px;
+      padding: 0.5rem 0.85rem;
+      color: var(--text-main);
+      font-size: 0.8rem;
+      outline: none;
+      width: 240px;
+    }
+    .search-input:focus { border-color: var(--cyan); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand-title">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div>
+          <h1>Loan Eligibility Engine</h1>
+          <p class="subtitle">Applicant Ingestion, Web Discovery & Automated Loan Matching Funnel</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <div class="badge">
+          <span class="badge-dot"></span>
+          <span id="envLabel">RDS PostgreSQL Connected</span>
+        </div>
+        <button class="btn btn-secondary" style="padding: 0.4rem 0.75rem; font-size: 0.775rem;" onclick="refreshAll()" title="Refresh metrics and recent batches">
+          ↻ Refresh
+        </button>
+      </div>
+    </header>
+
+    <!-- Global System Metrics Bar -->
+    <section class="stats-bar">
+      <div class="stat-card">
+        <span class="stat-title">Active Loan Products</span>
+        <span class="stat-val" id="statProducts">-</span>
+        <span class="stat-meta">Discovered & Crawled (Workflow A)</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-title">Total Applicants Ingested</span>
+        <span class="stat-val" id="statUsers">-</span>
+        <span class="stat-meta">Validated & Normalised in DB</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-title">Total Loan Matches</span>
+        <span class="stat-val" id="statMatches">-</span>
+        <span class="stat-meta">Qualified by Funnel (Workflow B)</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-title">Notifications Sent</span>
+        <span class="stat-val" id="statNotified">-</span>
+        <span class="stat-meta">Dispatched via Amazon SES</span>
+      </div>
+    </section>
+
+    <!-- Upload & Ingestion Box -->
+    <section class="card">
+      <div class="section-title">
+        <span>Upload Applicant CSV</span>
+        <button class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.4rem 0.75rem;" onclick="loadSampleData()">
+          ⚡ Quick Test: Load 30 Seed Applicants
+        </button>
+      </div>
+
+      <div class="upload-zone" id="dropZone" onclick="document.getElementById('csvFileInput').click()">
+        <div class="upload-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+          </svg>
+        </div>
+        <p>Click to select or drag & drop applicant CSV here</p>
+        <span>Supports comma-separated files up to 50MB</span>
+      </div>
+      <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleFileSelected(this.files[0])">
+
+      <!-- Client-side CSV Pre-check Inspection -->
+      <div class="file-preview" id="filePreview">
+        <div class="file-preview-header">
+          <div class="file-name" id="previewFileName">filename.csv</div>
+          <div class="file-meta" id="previewFileMeta">0 KB • 0 detected applicant rows</div>
+        </div>
+        <div>
+          <span style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">Detected Schema Columns:</span>
+          <div class="col-badges" id="previewCols"></div>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" id="startUploadBtn" onclick="uploadCsv()" disabled>
+          <span id="btnText">Start Ingestion Pipeline</span>
+        </button>
+        <button class="btn btn-secondary" onclick="resetUpload()">Clear</button>
+      </div>
+
+      <div class="alert-box" id="alertBox"></div>
+    </section>
+
+    <!-- Real-time Pipeline Execution Stepper -->
+    <section class="pipeline-card">
+      <div class="section-title">
+        <span>Pipeline Execution Funnel</span>
+        <span id="livePollerText" style="font-size: 0.75rem; color: var(--text-dim); font-weight: 400;">Idle</span>
+      </div>
+
+      <div class="stepper">
+        <div class="step-item" id="step1">
+          <div class="step-head">
+            <div class="step-number">1</div>
+            <span class="step-status" id="step1Status">Pending</span>
+          </div>
+          <div class="step-title">Direct S3 / Local Intake</div>
+          <div class="step-desc">Presigned URL streaming intake; bypasses payload limits</div>
+        </div>
+        <div class="step-item" id="step2">
+          <div class="step-head">
+            <div class="step-number">2</div>
+            <span class="step-status" id="step2Status">Pending</span>
+          </div>
+          <div class="step-title">Database Ingest & Validation</div>
+          <div class="step-desc">Idempotent batch upsert into PostgreSQL users table</div>
+        </div>
+        <div class="step-item" id="step3">
+          <div class="step-head">
+            <div class="step-number">3</div>
+            <span class="step-status" id="step3Status">Pending</span>
+          </div>
+          <div class="step-title">Matching Funnel (Workflow B)</div>
+          <div class="step-desc">SQL pre-filter, business rules, and Gemini LLM review</div>
+        </div>
+        <div class="step-item" id="step4">
+          <div class="step-head">
+            <div class="step-number">4</div>
+            <span class="step-status" id="step4Status">Pending</span>
+          </div>
+          <div class="step-title">SES Notifications (Workflow C)</div>
+          <div class="step-desc">Email dispatch and delivery audit tracking</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Active Batch Hero & Insights Explorer -->
+    <section class="card" id="insightsCard">
+      <div class="batch-hero">
+        <div class="batch-hero-header">
+          <div>
+            <span style="font-size: 0.725rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600;">Active Batch Scope</span>
+            <div class="batch-id-wrap" style="margin-top: 0.35rem;">
+              <span id="currentBatchId">No active batch selected</span>
+              <button class="copy-btn" onclick="copyBatchId()" title="Copy Batch ID">📋</button>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button id="retryWebhookBtn" class="btn btn-secondary" style="display: none; padding: 0.35rem 0.75rem; font-size: 0.75rem; color: var(--rose); border-color: rgba(248, 113, 113, 0.4);" onclick="retryWebhook()">
+              ⚡ Retry Webhook Dispatch
+            </button>
+            <span id="batchTimeText" style="font-size: 0.75rem; color: var(--text-muted);">-</span>
+            <span class="status-pill ingested" id="currentBatchStatus">READY</span>
+          </div>
+        </div>
+
+        <div class="batch-kpis">
+          <div class="kpi-tile">
+            <span class="kpi-name">Total Ingested</span>
+            <span class="kpi-val" id="kpiTotal">-</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-name">Clean Rows</span>
+            <span class="kpi-val" style="color: var(--emerald);" id="kpiClean">-</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-name">Rejected Rows</span>
+            <span class="kpi-val" style="color: var(--rose);" id="kpiRejected">-</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-name">Eligible Matches</span>
+            <span class="kpi-val" style="color: var(--cyan);" id="kpiMatches">-</span>
+          </div>
+          <div class="kpi-tile">
+            <span class="kpi-name">SES Emailed</span>
+            <span class="kpi-val" style="color: var(--violet);" id="kpiNotified">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="tabs-wrap">
+        <button class="tab-btn active" onclick="switchTab('tabMatches', this)">Eligible Loan Matches (<span id="tabMatchCount">0</span>)</button>
+        <button class="tab-btn" onclick="switchTab('tabFunnel', this)">Multi-Stage Funnel Audit</button>
+        <button class="tab-btn" onclick="switchTab('tabHistory', this)">Batch Upload History</button>
+      </div>
+
+      <!-- Tab 1: Matched Loans Table -->
+      <div class="tab-content active" id="tabMatches">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Matches generated for applicants in this batch:</span>
+          <input type="text" class="search-input" id="matchSearchInput" placeholder="Filter by User ID or Bank..." oninput="filterMatchesTable()">
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Applicant ID</th>
+                <th>Lending Partner</th>
+                <th>Loan Product</th>
+                <th>Interest Rate</th>
+                <th>Match Stage</th>
+                <th>Score</th>
+                <th>Eligibility Reason</th>
+                <th>SES Emailed</th>
+              </tr>
+            </thead>
+            <tbody id="matchesTableBody">
+              <tr>
+                <td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-dim);">
+                  Upload a CSV or select a batch to view matched loan products.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 2: Funnel Audit -->
+      <div class="tab-content" id="tabFunnel">
+        <div class="funnel-container">
+          <div class="funnel-row">
+            <div class="funnel-label">CSV Intake Rows</div>
+            <div class="funnel-track">
+              <div class="funnel-fill" id="funnel1" style="width: 0%;">0%</div>
+            </div>
+            <div class="funnel-count" id="funnelCount1">0</div>
+          </div>
+          <div class="funnel-row">
+            <div class="funnel-label">Valid User Upserts</div>
+            <div class="funnel-track">
+              <div class="funnel-fill" id="funnel2" style="width: 0%; background: linear-gradient(90deg, #0284c7, #34d399);">0%</div>
+            </div>
+            <div class="funnel-count" id="funnelCount2">0</div>
+          </div>
+          <div class="funnel-row">
+            <div class="funnel-label">Pre-Filter Passed</div>
+            <div class="funnel-track">
+              <div class="funnel-fill" id="funnel3" style="width: 0%; background: linear-gradient(90deg, #38bdf8, #818cf8);">0%</div>
+            </div>
+            <div class="funnel-count" id="funnelCount3">0</div>
+          </div>
+          <div class="funnel-row">
+            <div class="funnel-label">Final Eligible Matches</div>
+            <div class="funnel-track">
+              <div class="funnel-fill" id="funnel4" style="width: 0%; background: linear-gradient(90deg, #818cf8, #a78bfa);">0%</div>
+            </div>
+            <div class="funnel-count" id="funnelCount4">0</div>
+          </div>
+          <div class="funnel-row">
+            <div class="funnel-label">SES Delivery Dispatched</div>
+            <div class="funnel-track">
+              <div class="funnel-fill" id="funnel5" style="width: 0%; background: linear-gradient(90deg, #a78bfa, #34d399);">0%</div>
+            </div>
+            <div class="funnel-count" id="funnelCount5">0</div>
+          </div>
+        </div>
+        <p style="margin-top: 1.25rem; font-size: 0.775rem; color: var(--text-dim); line-height: 1.5;">
+          <strong>Stage 1 (SQL):</strong> Evaluates age, minimum income, and credit score ranges in single database query.<br>
+          <strong>Stage 2 (Rules & Scoring):</strong> Evaluates employment alignment and computes suitability score out of 100.<br>
+          <strong>Stage 3 (Gemini 3.8 Flash):</strong> Automatically evaluates borderline candidates against lender eligibility notes.
+        </p>
+      </div>
+
+      <!-- Tab 3: History Table -->
+      <div class="tab-content" id="tabHistory">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Batch ID</th>
+                <th>File Reference</th>
+                <th>Created At</th>
+                <th>Total Rows</th>
+                <th>Valid Rows</th>
+                <th>Rejected</th>
+                <th>Matches</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-dim);">Loading batch history...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Environment & API Routing Configuration
+    const isLocal = window.location.origin.includes("localhost") || window.location.origin.includes("127.0.0.1") || window.location.protocol === "file:";
+    const BASE_URL = isLocal ? "http://localhost:8000" : window.location.origin;
+
+    let selectedFile = null;
+    let currentBatchId = null;
+    let pollInterval = null;
+    let cachedMatches = [];
+
+    // Drag and Drop Initializers
+    const dropZone = document.getElementById("dropZone");
+    ['dragenter', 'dragover'].forEach(name => {
+      dropZone.addEventListener(name, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropZone.addEventListener(name, (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+    });
+    dropZone.addEventListener('drop', (e) => {
+      const files = e.dataTransfer.files;
+      if (files.length > 0) handleFileSelected(files[0]);
+    });
+
+    // File selected inspector
+    function handleFileSelected(file) {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        showAlert("Please select a valid CSV file.", "error");
+        return;
+      }
+
+      selectedFile = file;
+      document.getElementById("startUploadBtn").disabled = false;
+      document.getElementById("previewFileName").textContent = file.name;
+
+      const sizeStr = (file.size / 1024).toFixed(1) + " KB";
+      const reader = new FileReader();
+
+      // Read first 10KB to preview headers and count rows
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split("\n").filter(l => l.trim().length > 0);
+        const header = lines[0] ? lines[0].split(",").map(c => c.trim().replace(/^["']|["']$/g, '')) : [];
+        const count = Math.max(0, lines.length - 1);
+
+        document.getElementById("previewFileMeta").textContent = `${sizeStr} • ~${count} applicant rows detected`;
+        const expected = ["user_id", "email", "monthly_income", "credit_score", "employment_status", "age"];
+        const badgesContainer = document.getElementById("previewCols");
+        badgesContainer.innerHTML = "";
+
+        header.forEach(col => {
+          const pill = document.createElement("span");
+          const isValid = expected.includes(col.toLowerCase());
+          pill.className = `col-pill ${isValid ? 'valid' : ''}`;
+          pill.textContent = (isValid ? "✓ " : "") + col;
+          badgesContainer.appendChild(pill);
+        });
+
+        document.getElementById("filePreview").style.display = "flex";
+      };
+
+      reader.readAsText(file.slice(0, 15000));
+    }
+
+    function resetUpload() {
+      selectedFile = null;
+      document.getElementById("csvFileInput").value = "";
+      document.getElementById("filePreview").style.display = "none";
+      document.getElementById("startUploadBtn").disabled = true;
+      hideAlert();
+    }
+
+    // Quick Seed Test Button
+    function loadSampleData() {
+      const sampleCsv = `user_id,email,monthly_income,credit_score,employment_status,age
+usr_clear_01,jayantjoshi0001@gmail.com,85000,780,salaried,32
+usr_clear_02,jayantjoshi0001@gmail.com,120000,810,salaried,40
+usr_clear_03,jayantjoshi0001@gmail.com,65000,750,salaried,28
+usr_clear_04,jayantjoshi0001@gmail.com,95000,790,self_employed,35
+usr_clear_05,jayantjoshi0001@gmail.com,150000,820,salaried,45
+usr_borderline_01,jayantjoshi0001@gmail.com,29000,690,salaried,25
+usr_borderline_02,jayantjoshi0001@gmail.com,34000,705,salaried,29
+usr_reject_01,jayantjoshi0001@gmail.com,12000,450,unemployed,19
+usr_reject_02,jayantjoshi0001@gmail.com,18000,520,student,21`;
+
+      const blob = new Blob([sampleCsv], { type: "text/csv" });
+      const file = new File([blob], "demo_sample_applicants.csv", { type: "text/csv" });
+      handleFileSelected(file);
+      showAlert("Demo sample CSV loaded! Click 'Start Ingestion Pipeline' below to process.", "info");
+    }
+
+    // Upload & Ingest Pipeline Orchestrator
+    async function uploadCsv() {
+      if (!selectedFile) return showAlert("Please select a file first.", "error");
+
+      const btn = document.getElementById("startUploadBtn");
+      const btnText = document.getElementById("btnText");
+      btn.disabled = true;
+      btnText.innerHTML = `<span class="live-spin"></span> Processing Pipeline...`;
+
+      updateStepper(1, "active", "Streaming...");
+      showAlert("Requesting presigned upload URL...", "info");
+
+      try {
+        // Step 1: Request upload URL
+        const urlEndpoint = `${BASE_URL}/api/upload-url`;
+        const res = await fetch(urlEndpoint, { method: "GET" });
+        if (!res.ok) throw new Error("Could not acquire upload URL from server.");
+        const data = await res.json();
+
+        const uploadUrl = data.upload_url;
+        const batchId = data.batch_id || (data.key ? data.key.split("-").pop().replace(".csv", "") : null);
+        currentBatchId = batchId;
+
+        // Step 2: Stream PUT CSV file
+        showAlert(`Streaming CSV (${(selectedFile.size / 1024).toFixed(1)} KB) directly to intake...`, "info");
+        const putRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": "text/csv" },
+          body: selectedFile
+        });
+        if (!putRes.ok) throw new Error("File upload stream failed.");
+
+        updateStepper(1, "completed", "Completed");
+        updateStepper(2, "completed", "Ingested");
+        updateStepper(3, "active", "Matching...");
+
+        // If local dev server returned rich JSON response
+        let putJson = null;
+        try {
+          putJson = await putRes.json();
+          if (putJson && putJson.batch_id) currentBatchId = putJson.batch_id;
+        } catch (_) {}
+
+        showAlert(`File ingested successfully! Triggered n8n matching engine. Inspecting updates...`, "success");
+
+        // Reflect newly uploaded batch immediately
+        if (currentBatchId) {
+          document.getElementById("currentBatchId").textContent = currentBatchId;
+          document.getElementById("currentBatchStatus").textContent = "INGESTED";
+          document.getElementById("currentBatchStatus").className = "status-pill ingested";
+
+          if (putJson) {
+            document.getElementById("kpiTotal").textContent = putJson.total_rows || "-";
+            document.getElementById("kpiClean").textContent = putJson.inserted_rows || "-";
+            document.getElementById("kpiRejected").textContent = putJson.rejected_rows || "0";
+          }
+
+          // Start active polling
+          startBatchPoller(currentBatchId);
+        }
+
+        // Refresh batch history
+        fetchRecentBatches();
+        fetchSystemStats();
+
+      } catch (err) {
+        updateStepper(1, "failed", "Failed");
+        showAlert(`Ingest error: ${err.message}`, "error");
+      } finally {
+        btn.disabled = false;
+        btnText.textContent = "Start Ingestion Pipeline";
+      }
+    }
+
+    // Real-Time Poller for Batch State
+    function startBatchPoller(batchId) {
+      if (pollInterval) clearInterval(pollInterval);
+      let attempts = 0;
+      const maxAttempts = 20;
+
+      document.getElementById("livePollerText").textContent = "Live Engine: Polling n8n match updates...";
+
+      pollInterval = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await fetch(`${BASE_URL}/api/batch-status?batch_id=${batchId}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.batch) {
+            renderBatchDetails(data);
+
+            const status = (data.batch.status || "").toLowerCase();
+            const totalMatches = data.stats ? (data.stats.total_matches || 0) : 0;
+            const notifiedMatches = data.stats ? (data.stats.notified_matches || 0) : 0;
+
+            if (status === "notified" || (totalMatches > 0 && notifiedMatches > 0)) {
+              updateStepper(1, "completed", "Completed");
+              updateStepper(2, "completed", "Ingested");
+              updateStepper(3, "completed", "Matched");
+              updateStepper(4, "completed", "Sent");
+              clearInterval(pollInterval);
+              document.getElementById("livePollerText").textContent = "Pipeline finished (Status: Notified)";
+            } else if (status === "matched" || totalMatches > 0) {
+              updateStepper(1, "completed", "Completed");
+              updateStepper(2, "completed", "Ingested");
+              updateStepper(3, "completed", "Matched");
+              updateStepper(4, "active", "Ready for SES");
+              document.getElementById("livePollerText").textContent = `Matching completed (${totalMatches} matches recorded)`;
+            } else if (status === "failed" || status === "webhook_failed") {
+              updateStepper(3, "failed", status);
+              clearInterval(pollInterval);
+              document.getElementById("livePollerText").textContent = `Engine halted (${status})`;
+            }
+          }
+        } catch (err) {
+          console.warn("Polling status update:", err);
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          document.getElementById("livePollerText").textContent = "Polling window completed. Use Refresh to check.";
+        }
+      }, 2500);
+    }
+
+    function renderBatchDetails(data) {
+      const b = data.batch || {};
+      const stats = data.stats || {};
+      const matches = data.matches || [];
+      const totalMatches = stats.total_matches || matches.length || 0;
+      const notifiedMatches = stats.notified_matches || 0;
+
+      document.getElementById("currentBatchId").textContent = b.batch_id || "-";
+      document.getElementById("batchTimeText").textContent = b.created_at ? new Date(b.created_at).toLocaleTimeString() : "";
+
+      // Smart status pill: show MATCHED if matches exist even if DB row is still 'ingested'
+      let effectiveStatus = (b.status || "processing").toLowerCase();
+      if (effectiveStatus === "ingested" && totalMatches > 0) {
+        effectiveStatus = notifiedMatches > 0 ? "notified" : "matched";
+      }
+
+      const statusEl = document.getElementById("currentBatchStatus");
+      statusEl.textContent = effectiveStatus.toUpperCase();
+      statusEl.className = `status-pill ${effectiveStatus}`;
+
+      // Update stepper to match selected batch state
+      updateStepper(1, "completed", "Completed");
+      updateStepper(2, "completed", "Ingested");
+      if (totalMatches > 0 || effectiveStatus === "matched" || effectiveStatus === "notified") {
+        updateStepper(3, "completed", "Matched");
+        updateStepper(4, (notifiedMatches > 0 || effectiveStatus === "notified") ? "completed" : "active", (notifiedMatches > 0 || effectiveStatus === "notified") ? "Sent" : "Pending");
+      }
+
+      const retryBtn = document.getElementById("retryWebhookBtn");
+      if ((b.status || "").toLowerCase() === "webhook_failed") {
+        if (retryBtn) retryBtn.style.display = "inline-flex";
+      } else {
+        if (retryBtn) retryBtn.style.display = "none";
+      }
+
+      document.getElementById("kpiTotal").textContent = b.total_rows != null ? b.total_rows.toLocaleString() : "-";
+      document.getElementById("kpiClean").textContent = b.inserted_rows != null ? b.inserted_rows.toLocaleString() : "-";
+      document.getElementById("kpiRejected").textContent = b.rejected_rows != null ? b.rejected_rows.toLocaleString() : "0";
+      document.getElementById("kpiMatches").textContent = (stats.total_matches || 0).toLocaleString();
+      document.getElementById("kpiNotified").textContent = (stats.notified_matches || 0).toLocaleString();
+
+      document.getElementById("tabMatchCount").textContent = stats.total_matches || matches.length;
+
+      // Update Funnel Stats
+      const total = b.total_rows || 0;
+      const clean = b.inserted_rows || 0;
+      const matched = stats.total_matches || 0;
+      const notified = stats.notified_matches || 0;
+
+      document.getElementById("funnelCount1").textContent = total;
+      document.getElementById("funnelCount2").textContent = clean;
+      document.getElementById("funnelCount3").textContent = matched;
+      document.getElementById("funnelCount4").textContent = matched;
+      document.getElementById("funnelCount5").textContent = notified;
+
+      const p1 = total > 0 ? 100 : 0;
+      const p2 = total > 0 ? Math.min(100, Math.round((clean / total) * 100)) : 0;
+      const p3 = clean > 0 ? Math.min(100, Math.round((matched / clean) * 100)) : 0;
+      const p4 = clean > 0 ? Math.min(100, Math.round((matched / clean) * 100)) : 0;
+      const p5 = matched > 0 ? Math.min(100, Math.round((notified / matched) * 100)) : 0;
+
+      const f1 = document.getElementById("funnel1");
+      const f2 = document.getElementById("funnel2");
+      const f3 = document.getElementById("funnel3");
+      const f4 = document.getElementById("funnel4");
+      const f5 = document.getElementById("funnel5");
+
+      if (f1) { f1.style.width = p1 + "%"; f1.textContent = p1 + "%"; }
+      if (f2) { f2.style.width = p2 + "%"; f2.textContent = p2 + "%"; }
+      if (f3) { f3.style.width = p3 + "%"; f3.textContent = p3 + "%"; }
+      if (f4) { f4.style.width = p4 + "%"; f4.textContent = p4 + "%"; }
+      if (f5) { f5.style.width = p5 + "%"; f5.textContent = p5 + "%"; }
+
+      cachedMatches = matches;
+      renderMatchesTable(matches);
+    }
+
+    function renderMatchesTable(matches) {
+      const tbody = document.getElementById("matchesTableBody");
+      tbody.innerHTML = "";
+
+      if (!matches || matches.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-dim);">No matches recorded yet for this batch. Workflow B may still be running.</td></tr>`;
+        return;
+      }
+
+      matches.forEach(m => {
+        const rate = (m.interest_rate_min != null && m.interest_rate_max != null)
+          ? `${m.interest_rate_min}% - ${m.interest_rate_max}%`
+          : "Standard";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="mono">${escapeHtml(m.user_id)}</td>
+          <td style="font-weight: 600; color: var(--text-main);">${escapeHtml(m.provider)}</td>
+          <td>${escapeHtml(m.product_name)}</td>
+          <td class="mono">${rate}</td>
+          <td><span class="badge-stage ${escapeHtml(m.match_stage || 'eligible')}">${escapeHtml(m.match_stage || 'eligible')}</span></td>
+          <td class="mono" style="font-weight: 700; color: var(--cyan);">${m.score != null ? m.score : '-'}</td>
+          <td style="max-width: 250px; font-size: 0.75rem;" title="${escapeHtml(m.reason || '')}">${escapeHtml(m.reason || 'Criteria met')}</td>
+          <td>${m.notified ? '<span style="color: var(--emerald); font-weight: 600;">✓ Sent</span>' : '<span style="color: var(--text-dim);">Pending</span>'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterMatchesTable() {
+      const query = document.getElementById("matchSearchInput").value.toLowerCase();
+      const filtered = cachedMatches.filter(m =>
+        (m.user_id && m.user_id.toLowerCase().includes(query)) ||
+        (m.provider && m.provider.toLowerCase().includes(query)) ||
+        (m.product_name && m.product_name.toLowerCase().includes(query))
+      );
+      renderMatchesTable(filtered);
+    }
+
+    // Fetch Global Metrics & History
+    async function fetchSystemStats() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/stats`);
+        if (!res.ok) return;
+        const d = await res.json();
+        document.getElementById("statProducts").textContent = d.active_products != null ? d.active_products : "-";
+        document.getElementById("statUsers").textContent = d.total_users != null ? d.total_users.toLocaleString() : "-";
+        document.getElementById("statMatches").textContent = d.total_matches != null ? d.total_matches.toLocaleString() : "-";
+        document.getElementById("statNotified").textContent = d.total_notified != null ? d.total_notified.toLocaleString() : "-";
+      } catch (err) {
+        console.warn("Stats fetch:", err);
+      }
+    }
+
+    async function fetchRecentBatches() {
+      try {
+        const res = await fetch(`${BASE_URL}/api/batches`);
+        if (!res.ok) return;
+        const d = await res.json();
+        const batches = d.batches || [];
+        const tbody = document.getElementById("historyTableBody");
+        tbody.innerHTML = "";
+
+        if (batches.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-dim);">No batches found.</td></tr>`;
+          resetAuditFunnel();
+          return;
+        }
+
+        // If no batch is currently selected, select the latest one automatically!
+        if (!currentBatchId && batches.length > 0) {
+          selectBatch(batches[0].batch_id);
+        }
+
+        batches.forEach(b => {
+          const tr = document.createElement("tr");
+          const dateStr = b.created_at ? new Date(b.created_at).toLocaleString() : "-";
+          const statusClass = (b.status || "processing").toLowerCase();
+
+          tr.innerHTML = `
+            <td class="mono" style="font-size: 0.75rem;" title="${b.batch_id}">${b.batch_id.slice(0, 8)}...</td>
+            <td style="font-size: 0.75rem;" title="${escapeHtml(b.filename)}">${escapeHtml(b.filename.split('/').pop())}</td>
+            <td style="font-size: 0.75rem;">${dateStr}</td>
+            <td class="mono">${b.total_rows.toLocaleString()}</td>
+            <td class="mono" style="color: var(--emerald);">${b.inserted_rows.toLocaleString()}</td>
+            <td class="mono" style="color: ${b.rejected_rows > 0 ? 'var(--rose)' : 'var(--text-dim)'};">${b.rejected_rows}</td>
+            <td class="mono" style="font-weight: 700; color: var(--cyan);">${b.match_count || 0}</td>
+            <td><span class="status-pill ${statusClass}" style="font-size: 0.65rem; padding: 0.2rem 0.6rem;">${b.status}</span></td>
+            <td>
+              <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.7rem;" onclick="selectBatch('${b.batch_id}')">
+                Inspect
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.warn("Batches fetch:", err);
+      }
+    }
+
+    async function selectBatch(batchId) {
+      currentBatchId = batchId;
+      document.getElementById("currentBatchId").textContent = batchId;
+      document.getElementById("currentBatchStatus").textContent = "LOADING...";
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/batch-status?batch_id=${batchId}`);
+        if (!res.ok) throw new Error("Could not fetch details for batch");
+        const data = await res.json();
+        renderBatchDetails(data);
+
+        // Update stepper based on status
+        const st = (data.batch?.status || "").toLowerCase();
+        if (st === "ingested") {
+          updateStepper(1, "completed", "Completed");
+          updateStepper(2, "completed", "Ingested");
+          updateStepper(3, "active", "Matching");
+          updateStepper(4, "pending", "Pending");
+        } else if (st === "matched") {
+          updateStepper(1, "completed", "Completed");
+          updateStepper(2, "completed", "Ingested");
+          updateStepper(3, "completed", "Matched");
+          updateStepper(4, "active", "Notifying");
+        } else if (st === "notified") {
+          updateStepper(1, "completed", "Completed");
+          updateStepper(2, "completed", "Ingested");
+          updateStepper(3, "completed", "Matched");
+          updateStepper(4, "completed", "Notified");
+        }
+      } catch (err) {
+        showAlert(`Error loading batch: ${err.message}`, "error");
+      }
+    }
+
+    function updateStepper(stepNum, state, label) {
+      const el = document.getElementById(`step${stepNum}`);
+      const lbl = document.getElementById(`step${stepNum}Status`);
+      if (!el || !lbl) return;
+
+      el.className = `step-item ${state}`;
+      lbl.textContent = label;
+    }
+
+    function resetAuditFunnel() {
+      for (let i = 1; i <= 5; i++) {
+        const el = document.getElementById(`funnel${i}`);
+        if (el) {
+          el.style.width = "0%";
+          el.textContent = "0%";
+        }
+        const cnt = document.getElementById(`funnelCount${i}`);
+        if (cnt) cnt.textContent = "0";
+      }
+    }
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+      document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+      document.getElementById(tabId).classList.add("active");
+      btn.classList.add("active");
+    }
+
+    function showAlert(msg, type) {
+      const b = document.getElementById("alertBox");
+      b.textContent = msg;
+      b.className = `alert-box ${type}`;
+      b.style.display = "block";
+    }
+
+    function hideAlert() {
+      document.getElementById("alertBox").style.display = "none";
+    }
+
+    function copyBatchId() {
+      const text = document.getElementById("currentBatchId").textContent;
+      if (text && text.length > 10) {
+        navigator.clipboard.writeText(text);
+        showAlert("Batch ID copied to clipboard!", "info");
+        setTimeout(hideAlert, 2500);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    async function retryWebhook() {
+      if (!currentBatchId) return;
+      const btn = document.getElementById("retryWebhookBtn");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Retrying...";
+      }
+      showAlert("Retrying n8n webhook notification dispatch...", "info");
+
+      try {
+        const res = await fetch(`${BASE_URL}/api/retry-webhook`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batch_id: currentBatchId }),
+        });
+        const d = await res.json();
+        if (d.n8n_webhook_dispatched) {
+          showAlert("Webhook dispatched successfully! Workflow B is executing matching rules.", "success");
+          updateStepper(3, "active", "Matching...");
+          startBatchPoller(currentBatchId);
+        } else {
+          showAlert("Webhook dispatch failed. Please verify n8n container is running.", "error");
+        }
+      } catch (err) {
+        showAlert(`Retry error: ${err.message}`, "error");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "⚡ Retry Webhook Dispatch";
+        }
+      }
+    }
+
+    function refreshAll() {
+      fetchSystemStats();
+      fetchRecentBatches();
+      if (currentBatchId) selectBatch(currentBatchId);
+      showAlert("Dashboard metrics refreshed.", "info");
+      setTimeout(hideAlert, 2000);
+    }
+
+    // Auto-initialize on load
+    window.addEventListener("DOMContentLoaded", () => {
+      fetchSystemStats();
+      fetchRecentBatches();
+    });
+  </script>
+</body>
+</html>

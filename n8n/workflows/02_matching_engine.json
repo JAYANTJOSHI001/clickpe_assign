@@ -1,0 +1,486 @@
+{
+  "name": "B - User Loan Matching",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "loan-batch",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        0
+      ],
+      "id": "1b2e75ac-6cba-4a67-9345-9376c3a448d7",
+      "name": "Webhook",
+      "webhookId": "b4979219-e172-4a76-b9af-2b36169d34e7",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "kznUjRx0V9gOMRZT",
+          "name": "Header Auth-2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  u.user_id,\n  u.email,\n  u.monthly_income,\n  u.credit_score,\n  u.employment_status,\n  u.age,\n\n  p.id AS product_id,\n  p.provider,\n  p.product_name,\n  p.interest_rate_min,\n  p.interest_rate_max,\n  p.min_income,\n  p.min_credit_score,\n  p.max_credit_score,\n  p.min_age,\n  p.max_age,\n  p.employment_required,\n  p.eligibility_notes\n\nFROM users u\nJOIN loan_products p\n  ON p.is_active = TRUE\n\nWHERE u.upload_batch_id = '{{ $('Webhook').first().json.body.batch_id }}'::uuid\n\n  AND u.monthly_income >= COALESCE(p.min_income, 0) * 0.95\n\n  AND u.credit_score >= COALESCE(p.min_credit_score, 0) - 20\n\n  AND u.credit_score <= COALESCE(p.max_credit_score, 900) + 20\n\n  AND u.age >= COALESCE(p.min_age, 18)\n\n  AND u.age <= COALESCE(p.max_age, 100)\n\n  AND NOT EXISTS (\n    SELECT 1\n    FROM matches m\n    WHERE m.user_id = u.user_id\n      AND m.product_id = p.id\n  );",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "id": "e8f598eb-f39f-4636-baae-cfb8aad3ed4f",
+      "name": "Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst results = [];\n\nfor (const item of items) {\n  const p = item.json;\n\n  const income = Number(p.monthly_income);\n  const creditScore = Number(p.credit_score);\n  const age = Number(p.age);\n\n  const minIncome = p.min_income === null ? 0 : Number(p.min_income);\n  const minCredit = p.min_credit_score === null ? 0 : Number(p.min_credit_score);\n  const maxCredit = p.max_credit_score === null ? 900 : Number(p.max_credit_score);\n  const minAge = p.min_age === null ? 18 : Number(p.min_age);\n  const maxAge = p.max_age === null ? 100 : Number(p.max_age);\n\n  // Income eligibility\n  const incomeEligible = income >= minIncome;\n\n  // Credit score eligibility\n  const creditEligible =\n    creditScore >= minCredit &&\n    creditScore <= maxCredit;\n\n  // Age eligibility\n  const ageEligible =\n    age >= minAge &&\n    age <= maxAge;\n\n  // Employment eligibility\n  let employmentEligible = true;\n\n  if (Array.isArray(p.employment_required) &&\n      p.employment_required.length > 0) {\n      \n      const normalizeEmployment = value => String(value).toLowerCase().replace(/[\\s_-]+/g, '');\n      \n      const allowed = p.employment_required.map(normalizeEmployment);\n      \n      const employment = normalizeEmployment(p.employment_status);\n      \n      employmentEligible =\n        allowed.includes('both') ||\n        allowed.includes(employment);\n  }\n\n  const hardEligible =\n    incomeEligible &&\n    creditEligible &&\n    ageEligible &&\n    employmentEligible;\n\n  // Calculate a simple score out of 100\n  let score = 0;\n\n  if (incomeEligible) score += 30;\n  if (creditEligible) score += 30;\n  if (ageEligible) score += 20;\n  if (employmentEligible) score += 20;\n\n  let matchStage;\n\n  if (hardEligible) {\n    matchStage = 'eligible';\n  } else if (score >= 60) {\n    matchStage = 'borderline';\n  } else {\n    matchStage = 'rejected';\n  }\n\n  results.push({\n    json: {\n      ...p,\n\n      income_eligible: incomeEligible,\n      credit_eligible: creditEligible,\n      age_eligible: ageEligible,\n      employment_eligible: employmentEligible,\n\n      score,\n      match_stage: matchStage,\n\n      reason:\n        `Income: ${incomeEligible ? 'pass' : 'fail'}; ` +\n        `Credit: ${creditEligible ? 'pass' : 'fail'}; ` +\n        `Age: ${ageEligible ? 'pass' : 'fail'}; ` +\n        `Employment: ${employmentEligible ? 'pass' : 'fail'}`\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "08291507-acc4-4338-b98d-01ee150bbde2",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "113a1815-aff5-4665-8944-40c38f1439bd",
+              "leftValue": "={{ $json.match_stage }}",
+              "rightValue": "eligible",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "ce54359c-a189-4e27-871c-a17eee7d22b6",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "44e4dded-5ae0-4a03-a2b7-473f8355e5ff",
+              "leftValue": "={{ $json.match_stage }}",
+              "rightValue": "borderline",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        100
+      ],
+      "id": "bd8b7a4c-0ba2-47ef-9e1a-e6f042674379",
+      "name": "Filter Borderline"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO matches (\n  user_id,\n  product_id,\n  batch_id,\n  match_stage,\n  score,\n  reason\n)\nVALUES (\n  '{{ $json.user_id }}',\n  {{ $json.product_id }},\n  '{{ $('Webhook').first().json.body.batch_id }}'::uuid,\n  '{{ $json.match_stage }}',\n  {{ $json.score }},\n  '{{ String($json.reason).replace(/'/g, \"''\") }}'\n)\nON CONFLICT (user_id, product_id)\nDO UPDATE SET\n  batch_id = EXCLUDED.batch_id,\n  match_stage = EXCLUDED.match_stage,\n  score = EXCLUDED.score,\n  reason = EXCLUDED.reason;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1100,
+        -160
+      ],
+      "id": "e516b24e-1e6e-4e6a-ac95-a574e74b8cce",
+      "name": "Insert Eligible Matches",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const p = item.json;\n\n  return {\n    json: {\n      user_id: p.user_id,\n      product_id: p.product_id,\n\n      provider: p.provider,\n      product_name: p.product_name,\n\n      monthly_income: p.monthly_income,\n      credit_score: p.credit_score,\n      employment_status: p.employment_status,\n      age: p.age,\n\n      min_income: p.min_income,\n      min_credit_score: p.min_credit_score,\n      max_credit_score: p.max_credit_score,\n      min_age: p.min_age,\n      max_age: p.max_age,\n\n      employment_required: p.employment_required,\n      eligibility_notes: p.eligibility_notes,\n\n      deterministic_score: p.score,\n      deterministic_reason: p.reason,\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "822a1038-aa34-4ea6-aec1-6a569aebc112",
+      "name": "Prepare Gemini Review"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst batchSize = 10;\nconst batches = [];\n\nfor (let i = 0; i < items.length; i += batchSize) {\n  const batch = items.slice(i, i + batchSize);\n\n  batches.push({\n    json: {\n      candidates: batch.map(item => item.json)\n    }\n  });\n}\n\nreturn batches;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "46a310b1-a156-4a2f-8ee2-64ed886fc07a",
+      "name": "Batching"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  {\n    contents: [\n      {\n        parts: [\n          {\n            text: `You are reviewing borderline personal-loan matches.\n\nFor each candidate, determine whether the user is likely eligible for the loan product based on the structured eligibility fields and eligibility_notes.\n\nReturn ONLY valid JSON. No markdown. No explanation outside JSON.\n\nReturn exactly this structure:\n{\n  \"reviews\": [\n    {\n      \"user_id\": \"...\",\n      \"product_id\": 123,\n      \"decision\": \"eligible|rejected\",\n      \"reason\": \"short explanation\"\n    }\n  ]\n}\n\nImportant:\n- Preserve user_id and product_id exactly.\n- Use \"eligible\" only when the candidate reasonably satisfies the product requirements.\n- Use \"rejected\" when the failed requirement is clearly mandatory.\n- Consider eligibility_notes when making the decision.\n- Do not invent missing information.\n\nCandidates:\n${JSON.stringify($json.candidates)}`\n          }\n        ]\n      }\n    ]\n  }\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        0
+      ],
+      "id": "a4c036fa-4e8d-422b-9b01-27eed8b71d52",
+      "name": "Gemini Borderline Review",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Aem2IWSHohHHsspu",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst results = [];\n\nfor (const item of items) {\n  const rawText =\n    item.json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';\n\n  if (!rawText) {\n    continue;\n  }\n\n  const cleaned = rawText\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/\\s*```$/i, '')\n    .trim();\n\n  let parsed;\n\n  try {\n    parsed = JSON.parse(cleaned);\n  } catch (error) {\n    throw new Error(`Invalid Gemini JSON: ${error.message}`);\n  }\n\n  const reviews = Array.isArray(parsed.reviews)\n    ? parsed.reviews\n    : [];\n\n  for (const review of reviews) {\n    results.push({\n      json: {\n        user_id: review.user_id,\n        product_id: Number(review.product_id),\n        decision: review.decision,\n        reason: review.reason,\n      }\n    });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        0
+      ],
+      "id": "738adebb-9b49-43cc-8292-b6549a6b8ecf",
+      "name": "Parse Gemini Reviews"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO matches (\n  user_id,\n  product_id,\n  batch_id,\n  match_stage,\n  score,\n  reason\n)\nVALUES (\n  '{{ $json.user_id }}',\n  {{ $json.product_id }},\n  '{{ $('Webhook').first().json.body.batch_id }}'::uuid,\n  '{{ $json.decision }}',\n  NULL,\n  '{{ String($json.reason).replace(/'/g, \"''\") }}'\n)\nON CONFLICT (user_id, product_id)\nDO UPDATE SET\n  batch_id = EXCLUDED.batch_id,\n  match_stage = EXCLUDED.match_stage,\n  score = EXCLUDED.score,\n  reason = EXCLUDED.reason;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2200,
+        0
+      ],
+      "id": "8fd906aa-59d8-41da-b572-33fe0702f85a",
+      "name": "Save Gemini Matches",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "K2m86xzIariYcpD2",
+          "mode": "list",
+          "cachedResultName": "C - Email Notification"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2640,
+        0
+      ],
+      "id": "12e428ae-b123-48b5-85ac-1dcce1d4f7c6",
+      "name": "Execute Workflow"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "K2m86xzIariYcpD2",
+          "mode": "list",
+          "cachedResultName": "C - Email Notification"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1460,
+        -160
+      ],
+      "id": "8dd4f083-c48d-4da3-951b-e6cf3917a55f",
+      "name": "Execute Workflow1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    batch_id: $('Webhook').first().json.body.batch_id\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        0
+      ],
+      "id": "06d8f311-8ee6-47b5-8cc6-040d616bc26d",
+      "name": "Prepare Batch ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    batch_id: $('Webhook').first().json.body.batch_id\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        -160
+      ],
+      "id": "e43052dc-7a8d-43ef-a3f8-0f0dcef55c4a",
+      "name": "Prepare Batch ID1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Insert Eligible Matches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Filter Borderline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Borderline": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gemini Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Gemini Review": {
+      "main": [
+        [
+          {
+            "node": "Batching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batching": {
+      "main": [
+        [
+          {
+            "node": "Gemini Borderline Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Borderline Review": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Gemini Reviews": {
+      "main": [
+        [
+          {
+            "node": "Save Gemini Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Gemini Matches": {
+      "main": [
+        [
+          {
+            "node": "Prepare Batch ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Eligible Matches": {
+      "main": [
+        [
+          {
+            "node": "Prepare Batch ID1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Batch ID": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Batch ID1": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "zjB97JAAZ0ABogIc"
+  },
+  "versionId": "94be014e-8ea7-4c29-ab57-3fadd43253fe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8f29f85f1ebc7a2da8bd58dfa5853398a9c94ea305d9c4d185ef8a641419e0b9"
+  },
+  "id": "tlFz7Cxg4VxgUWWh",
+  "tags": []
+}

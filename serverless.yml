@@ -1,0 +1,136 @@
+# ==============================================================================
+# Loan Eligibility Engine - Serverless Infrastructure
+#
+# NOTE ON ARCHITECTURE & FREE-TIER CONSTRAINTS:
+# - Amazon RDS PostgreSQL is created manually in the AWS Console (free-tier db.t3.micro/db.t4g.micro).
+# - Lambda functions run outside a VPC to eliminate NAT Gateway costs (~$32/month)
+#   and connect directly to RDS over public SSL (sslmode=require).
+# ==============================================================================
+
+service: loan-eligibility-engine
+frameworkVersion: '3 || 4'
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: ${env:AWS_REGION, 'ap-south-1'}
+  stage: ${opt:stage, 'dev'}
+  logRetentionInDays: 14
+  environment:
+    UPLOAD_BUCKET: ${env:UPLOAD_BUCKET}
+    DB_HOST: ${env:DB_HOST}
+    DB_PORT: ${env:DB_PORT, '5432'}
+    DB_NAME: ${env:DB_NAME, 'postgres'}
+    DB_USER: ${env:DB_USER}
+    DB_PASSWORD: ${env:DB_PASSWORD}
+    N8N_WEBHOOK_URL: ${env:N8N_WEBHOOK_URL}
+    N8N_WEBHOOK_SECRET: ${env:N8N_WEBHOOK_SECRET}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+          Resource:
+            - arn:aws:s3:::${env:UPLOAD_BUCKET}/uploads/*
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+          Resource:
+            - arn:aws:s3:::${env:UPLOAD_BUCKET}/rejected/*
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+          Resource:
+            - Fn::GetAtt: [ProcessCsvDLQ, Arn]
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
+    pipCmdExtra:
+      - '--platform'
+      - 'manylinux2014_x86_64'
+      - '--only-binary=:all:'
+
+functions:
+  get_upload_url:
+    handler: src/get_upload_url.handler
+    timeout: 10
+    memorySize: 128
+    url:
+      cors:
+        allowedOrigins:
+          - '*'
+        allowedHeaders:
+          - '*'
+        allowedMethods:
+          - GET
+          - OPTIONS
+        maxAge: 3000
+
+  process_csv:
+    handler: src/process_csv.handler
+    timeout: 300
+    memorySize: 512
+    onError:
+      Fn::GetAtt: [ProcessCsvDLQ, Arn]
+    events:
+      - s3:
+          bucket: ${env:UPLOAD_BUCKET}
+          event: s3:ObjectCreated:*
+          rules:
+            - prefix: uploads/
+            - suffix: .csv
+          existing: false
+
+resources:
+  Resources:
+    ProcessCsvDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-process-csv-dlq
+        MessageRetentionPeriod: 1209600 # 14 days
+
+    UploadBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${env:UPLOAD_BUCKET}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        CorsConfiguration:
+          CorsRules:
+            # Direct client uploads require PUT; GET for testing. Restrict origins in production.
+            - AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+              AllowedOrigins:
+                - '*'
+              MaxAge: 3000
+        LifecycleConfiguration:
+          Rules:
+            - Id: CleanupUploads7Days
+              Status: Enabled
+              Prefix: uploads/
+              ExpirationInDays: 7
+            - Id: CleanupRejected7Days
+              Status: Enabled
+              Prefix: rejected/
+              ExpirationInDays: 7
+
+  Outputs:
+    GetUploadUrlFunctionUrl:
+      Description: Public Function URL for get_upload_url Lambda
+      Value:
+        Fn::GetAtt: [Get_upload_urlLambdaFunctionUrl, FunctionUrl]
+    UploadBucketName:
+      Description: S3 Bucket Name for CSV uploads
+      Value: ${env:UPLOAD_BUCKET}

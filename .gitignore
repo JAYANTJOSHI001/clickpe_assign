@@ -1,0 +1,35 @@
+# Environment variables and secrets
+.env
+*.env
+!.env.example
+
+# Serverless Framework artifacts and cache
+.serverless/
+
+# Node dependencies
+node_modules/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# n8n local data and mounts
+n8n_data/
+
+# Archives and build artifacts
+*.zip
+dist/
+build/
+*.egg-info/
+
+# Operating system files
+.DS_Store
+Thumbs.db

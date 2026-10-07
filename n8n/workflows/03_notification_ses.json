@@ -1,0 +1,267 @@
+{
+  "name": "C - Email Notification",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  m.id AS match_id,\n  m.user_id,\n  u.email,\n  m.product_id,\n  p.provider,\n  p.product_name,\n  p.interest_rate_min,\n  p.interest_rate_max,\n  m.match_stage,\n  m.score,\n  m.reason\nFROM matches m\nJOIN users u\n  ON u.user_id = m.user_id\nJOIN loan_products p\n  ON p.id = m.product_id\nWHERE m.batch_id = '{{ $json.batch_id }}'::uuid\n  AND m.match_stage = 'eligible'\n  AND m.notified = FALSE\nORDER BY m.id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "id": "a567c9de-a804-4b01-9b5f-b2346761a05e",
+      "name": "Get Eligible Matches",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const p = item.json;\n\n  const rate =\n    p.interest_rate_min !== null && p.interest_rate_max !== null\n      ? `${p.interest_rate_min}% - ${p.interest_rate_max}%`\n      : 'Not specified';\n\n  const subject = `Loan Match Found - ${p.product_name}`;\n\n  const body = `Hi,\n\nGood news! Based on your profile, you may be eligible for the following loan product:\n\nProvider: ${p.provider}\nLoan Product: ${p.product_name}\nInterest Rate: ${rate}\n\nYour eligibility checks:\n- Income: Passed\n- Credit Score: Passed\n- Age: Passed\n- Employment: Passed\n\nMatch Score: ${p.score}\n\nWhy you matched:\n${p.reason}\n\nPlease visit the lender's official website and verify the latest eligibility criteria, interest rates, and terms before applying.\n\nRegards,\nLoan Eligibility Engine`;\n\n  return {\n    json: {\n      ...p,\n      email_subject: subject,\n      email_body: body\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "6999c588-30e4-4e24-9d75-041991b62ba3",
+      "name": "Prepare Email"
+    },
+    {
+      "parameters": {
+        "subject": "={{ $json.email_subject }}",
+        "body": "={{ $json.email_body }}",
+        "fromEmail": "jayantjoshi0001@gmail.com",
+        "toAddresses": [
+          "=jayantjoshi0001@gmail.com"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.awsSes",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        20
+      ],
+      "id": "2029238c-75ca-4249-a2c9-f773360d25f0",
+      "name": "Send Loan Match Email",
+      "credentials": {
+        "aws": {
+          "id": "cplJeHF8i3Md0gWq",
+          "name": "AWS account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE matches\nSET notified = TRUE\nWHERE id = {{ $json.match_id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1800,
+        20
+      ],
+      "id": "2c7fe293-c641-42e4-9dae-4a07c9f47d94",
+      "name": "Mark Notified",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sesResults = $input.all();\nconst originalItems = $('Limit').all();\n\nreturn sesResults.map((item, index) => ({\n  json: {\n    ...originalItems[index].json,\n    ses_message_id:\n      item.json.SendEmailResponse?.SendEmailResult?.MessageId ?? null,\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1580,
+        20
+      ],
+      "id": "09661a9f-3991-482e-b34a-dcda4d651cc9",
+      "name": "Restore Match Data"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "a6b111dd-1cbd-4df6-8687-3de07ef2c1ea",
+      "name": "Email Batch Loop"
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1240,
+        260
+      ],
+      "id": "052bf89c-d273-4d79-9302-2965bfebaad4",
+      "name": "Wait",
+      "webhookId": "e9774931-c5ef-4993-95fe-c29bfcc7df9a"
+    },
+    {
+      "parameters": {
+        "maxItems": 2
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        880,
+        0
+      ],
+      "id": "ee9f2403-f23b-4afc-afb9-5b77395cc703",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "id": "f005acd1-47e1-4416-ba60-4da620799512",
+      "name": "When Executed by Another Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Eligible Matches": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Loan Match Email": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Match Data": {
+      "main": [
+        [
+          {
+            "node": "Mark Notified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Batch Loop": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send Loan Match Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Notified": {
+      "main": [
+        [
+          {
+            "node": "Email Batch Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Restore Match Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Email Batch Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get Eligible Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "zjB97JAAZ0ABogIc"
+  },
+  "versionId": "24dab65f-3748-4e2f-bb55-d34d3997ad28",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8f29f85f1ebc7a2da8bd58dfa5853398a9c94ea305d9c4d185ef8a641419e0b9"
+  },
+  "id": "K2m86xzIariYcpD2",
+  "tags": []
+}

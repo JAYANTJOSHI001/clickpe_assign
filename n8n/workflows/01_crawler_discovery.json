@@ -1,0 +1,343 @@
+{
+  "name": "A - Loan Product Discovery",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "052e309d-3f1c-440b-a270-0a434311d7ff",
+      "name": "When clicking ‘Test workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sources = [\n  {\n    provider: 'BankBazaar',\n    url: 'https://www.bankbazaar.com/personal-loan.html',\n  },\n  {\n    provider: 'Paisabazaar',\n    url: 'https://www.paisabazaar.com/personal-loan/',\n  },\n  {\n    provider: 'HDFC Bank',\n    url: 'https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan',\n  },\n];\n\nreturn sources.map(source => ({\n  json: source,\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "7190022c-0e52-496a-9d03-d90e15d6b34b",
+      "name": "Source List",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "49b3c7c6-bd30-4989-b836-faca7fdae059",
+      "name": "Fetch Page"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const html = item.json.data ?? '';\n\n  const text = html\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n    .replace(/<noscript[\\s\\S]*?<\\/noscript>/gi, ' ')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  return {\n    json: {\n      provider: item.json.provider,\n      url: item.json.url,\n      text,\n      text_length: text.length,\n    },\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "efa1b422-8c03-45ee-8303-c9372a912b74",
+      "name": "Clean Text"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "88a18e25-a4e8-4396-9d58-bb3680dd5877",
+              "leftValue": "={{ $json.text_length }}",
+              "rightValue": 800,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "675f1a73-31a5-493d-a357-ce51d5e133a2",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "=httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    contents: [\n      {\n        parts: [\n          {\n            text:\n              `Extract personal loan products from the webpage text.\nReturn each product with these fields:\nprovider, source_url, product_name, interest_rate_min, interest_rate_max,\nmin_income, min_credit_score, max_credit_score, min_age, max_age,\nemployment_required, eligibility_notes.\n\nFor provider, use exactly: ${$json.provider}\nFor source_url, use exactly: ${$json.url}\n\nFor employment_required, return an array of allowed employment types such as\n\"salaried\" or \"self-employed\". If employment type is not specified, return null.\n\nReturn ONLY valid JSON.\nDo not use markdown code fences.\n\nWebpage text:\n${$json.text}`\n          }\n        ]\n      }\n    ]\n  })\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -100
+      ],
+      "id": "58556720-df64-4ed7-9259-697542ee5319",
+      "name": "Gemini Extract",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Aem2IWSHohHHsspu",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d82fcd5b-dffd-44f2-bec0-e585bcbc772d",
+              "leftValue": "={{ $json.product_name }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        -100
+      ],
+      "id": "b2e34451-9cb2-4a78-acb0-cef908706d09",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "function sqlString(value) {\n  if (value === null || value === undefined || value === '') {\n    return 'NULL';\n  }\n\n  return `'${String(value).replace(/'/g, \"''\")}'`;\n}\n\nfunction sqlNumber(value) {\n  if (value === null || value === undefined || value === '') {\n    return 'NULL';\n  }\n\n  const n = Number(value);\n\n  return Number.isFinite(n) ? String(n) : 'NULL';\n}\n\nfunction sqlTextArray(value) {\n  if (!Array.isArray(value) || value.length === 0) {\n    return 'NULL';\n  }\n\n  return `ARRAY[${value.map(v => sqlString(v)).join(', ')}]::text[]`;\n}\n\nreturn $input.all().map(item => {\n  const p = item.json;\n\n  const sql = `\nINSERT INTO loan_products (\n  provider,\n  product_name,\n  source_url,\n  interest_rate_min,\n  interest_rate_max,\n  min_income,\n  min_credit_score,\n  max_credit_score,\n  min_age,\n  max_age,\n  employment_required,\n  eligibility_notes,\n  is_active,\n  last_seen_at\n)\nVALUES (\n  ${sqlString(p.provider)},\n  ${sqlString(p.product_name)},\n  ${sqlString(p.source_url)},\n  ${sqlNumber(p.interest_rate_min)},\n  ${sqlNumber(p.interest_rate_max)},\n  ${sqlNumber(p.min_income)},\n  ${sqlNumber(p.min_credit_score)},\n  ${sqlNumber(p.max_credit_score)},\n  ${sqlNumber(p.min_age)},\n  ${sqlNumber(p.max_age)},\n  ${sqlTextArray(p.employment_required)},\n  ${sqlString(p.eligibility_notes)},\n  TRUE,\n  NOW()\n)\nON CONFLICT (provider, product_name)\nDO UPDATE SET\n  source_url = EXCLUDED.source_url,\n  interest_rate_min = EXCLUDED.interest_rate_min,\n  interest_rate_max = EXCLUDED.interest_rate_max,\n  min_income = EXCLUDED.min_income,\n  min_credit_score = EXCLUDED.min_credit_score,\n  max_credit_score = EXCLUDED.max_credit_score,\n  min_age = EXCLUDED.min_age,\n  max_age = EXCLUDED.max_age,\n  employment_required = EXCLUDED.employment_required,\n  eligibility_notes = EXCLUDED.eligibility_notes,\n  is_active = TRUE,\n  last_seen_at = NOW();\n`;\n\n  return {\n    json: {\n      ...p,\n      sql,\n    },\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        -200
+      ],
+      "id": "dd13fed9-9ef6-4f02-8e30-03b305352ea9",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2160,
+        -200
+      ],
+      "id": "4c0d3d1b-5ae6-4ec4-a9dd-f5bcf8954f59",
+      "name": "Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "3hOXM3qy9Eq3PYcJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => {\n  const sourceItems = $('Source List').all();\n\n  return {\n    json: {\n      provider: sourceItems[index].json.provider,\n      url: sourceItems[index].json.url,\n      data: item.json.data,\n    },\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "8d53d5dd-c4a3-4369-9a4f-159f306288e3",
+      "name": "Restore Source Info"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText =\n  $input.first().json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';\n\nif (!rawText) {\n  throw new Error('Gemini returned empty response');\n}\n\nconst cleaned = rawText\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .trim();\n\nlet parsed;\n\ntry {\n  parsed = JSON.parse(cleaned);\n} catch (error) {\n  throw new Error(`Gemini returned invalid JSON: ${error.message}`);\n}\n\nconst products = Array.isArray(parsed)\n  ? parsed\n  : parsed.products;\n\nif (!Array.isArray(products)) {\n  throw new Error('Gemini response does not contain a products array');\n}\n\nconst validProducts = products.filter(product => {\n  return (\n    product &&\n    typeof product === 'object' &&\n    product.product_name\n  );\n});\n\nreturn validProducts.map(product => ({\n  json: {\n    provider: product.provider ?? null,\n    source_url: product.source_url ?? null,\n\n    product_name: product.product_name ?? null,\n    interest_rate_min: product.interest_rate_min ?? null,\n    interest_rate_max: product.interest_rate_max ?? null,\n    min_income: product.min_income ?? null,\n    min_credit_score: product.min_credit_score ?? null,\n    max_credit_score: product.max_credit_score ?? null,\n    min_age: product.min_age ?? null,\n    max_age: product.max_age ?? null,\n\n    employment_required: Array.isArray(product.employment_required)\n      ? product.employment_required\n      : null,\n\n    eligibility_notes: product.eligibility_notes ?? null,\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -100
+      ],
+      "id": "6e9dc3c7-8688-46e8-b94e-2a320c36690a",
+      "name": "Parse & Validate"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Test workflow’": {
+      "main": [
+        [
+          {
+            "node": "Source List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Source List": {
+      "main": [
+        [
+          {
+            "node": "Fetch Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Page": {
+      "main": [
+        [
+          {
+            "node": "Restore Source Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Text": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Gemini Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Extract": {
+      "main": [
+        [
+          {
+            "node": "Parse & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Source Info": {
+      "main": [
+        [
+          {
+            "node": "Clean Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Validate": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "zjB97JAAZ0ABogIc"
+  },
+  "versionId": "0bde8ac7-74e5-4c67-9048-3af5aabc6856",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8f29f85f1ebc7a2da8bd58dfa5853398a9c94ea305d9c4d185ef8a641419e0b9"
+  },
+  "id": "gqmGIDJ1p4TYC8EO",
+  "tags": []
+}
