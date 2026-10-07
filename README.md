@@ -179,29 +179,38 @@ At the end of the deployment, save the **`GetUploadUrlFunctionUrl`** output (e.g
 - **Line-by-Line Streaming Ingestion:** `process_csv` streams the S3 object using Python's `io.TextIOWrapper` and `csv.DictReader`. Memory usage remains strictly flat at ~50 MB regardless of whether the file has 1,000 or 1,000,000 rows.
 - **1,000-Row Batching & Idempotency:** User records are committed in batches of 1,000 using `psycopg2.extras.execute_values` with an `ON CONFLICT (user_id) DO UPDATE` clause. Re-uploading the exact same CSV updates records in place without throwing errors or duplicating data.
 - **Asynchronous Dead-Letter Queue (DLQ):** `process_csv` routes failed events to an Amazon SQS dead-letter queue after automatic Lambda retries, preserving corrupted payloads for debugging without stalling the pipeline.
+---
+## 7. n8n Automations
 
-### TODO (Human) - n8n Workflow Design & Optimization Story
+The loan eligibility engine uses **n8n** to orchestrate the end-to-end automation workflow, including loan product discovery, user-product matching, email notifications, and error handling.
 
-#### Workflow A: Loan Product Discovery Strategy
-*(TODO: Describe crawling cadence, target websites, HTML-to-text cleaning, and Gemini JSON schema extraction)*
+### A. Loan Product Discovery
 
-#### Workflow B: Optimization Treasure Hunt (Funnel Counts)
-*(TODO: Document the multi-stage funnel optimization strategy. Explain how set-based SQL and rule classification slashed expensive LLM calls)*
+Automatically fetches loan product information from external sources, uses Gemini to extract structured eligibility criteria, validates the extracted data, and upserts the products into PostgreSQL.
 
-| Stage | Description | Candidates Evaluated | Reduction Rate | Execution Cost |
-|---|---|---|---|---|
-| Stage 0 | Total Theoretical Pairs (Users $\times$ Products) | e.g. 100,000 | 0% | $0.00 |
-| Stage 1 | SQL Pre-Filter (Income, Credit, Age) | *(TODO: Count)* | *(TODO: %)* | $0.00 |
-| Stage 2 | Rule & Scoring Engine (Employment checks) | *(TODO: Count)* | *(TODO: %)* | $0.00 |
-| Stage 3 | Gemini LLM (Borderline threshold pairs only) | *(TODO: Count)* | *(TODO: %)* | Free Tier |
-| Stage 4 | Final Approved Matches Committed | *(TODO: Count)* | — | $0.00 |
+![Loan Product Discovery](https://res.cloudinary.com/du7a1obsy/image/upload/v1791377085/Screenshot_2026-10-07_181425_paxdsa.png)
 
-#### Workflow C: Notification & Rate Limiting Strategy
-*(TODO: Describe batching for SES sandbox rate limits, HTML template construction, and idempotent notification tracking)*
+### B. User Loan Matching
+
+Matches users against available loan products using structured eligibility rules and scoring. Eligible matches are stored directly, while borderline cases are reviewed using Gemini.
+
+![User Loan Matching](https://res.cloudinary.com/du7a1obsy/image/upload/v1791377289/Screenshot_2026-10-07_181717_hzpzlw.png)
+
+### C. Email Notification
+
+Sends personalized loan-match notifications through **AWS SES** for eligible matches and marks successfully notified matches in PostgreSQL to prevent duplicate notifications.
+
+![Email Notification](https://res.cloudinary.com/du7a1obsy/image/upload/v1791377396/Screenshot_2026-10-07_181931_tzxf0z.png)
+
+### D. Error Handler
+
+Centralized error-handling workflow that captures workflow failures, execution details, error messages, and timestamps for logging and debugging.
+
+![Error Handler](https://res.cloudinary.com/du7a1obsy/image/upload/v1791377477/Screenshot_2026-10-07_182053_orkccu.png)
 
 ---
 
-## 7. Security, Cost, & Maintenance
+## 8. Security, Cost, & Maintenance
 
 ### Security Highlights
 - **S3 Bucket:** Private with `BlockPublicAcls`, `BlockPublicPolicy`, and private bucket ACLs.
@@ -230,7 +239,7 @@ docker compose --profile tunnel down -v
 
 ---
 
-## 8. Repository Structure
+## 9. Repository Structure
 
 ```
 loan-eligibility-engine/
